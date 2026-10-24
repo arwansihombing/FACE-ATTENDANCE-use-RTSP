@@ -1,0 +1,37 @@
+version: '3.9'
+services:
+  pgsql:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: face_attendance
+      POSTGRES_USER: fa_user
+      POSTGRES_PASSWORD: fa_password
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+  app:
+    image: php:8.3-fpm
+    working_dir: /var/www
+    volumes: [./laravel-app:/var/www]
+    depends_on: [pgsql, redis]
+    ports: ["8000:8000"]
+    command: bash -c "composer install && php artisan serve --host=0.0.0.0 --port=8000"
+  reverb:
+    image: php:8.3-cli
+    working_dir: /var/www
+    volumes: [./laravel-app:/var/www]
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    ports: ["8080:8080"]
+  worker:
+    build: ./python-worker
+    env_file: ./python-worker/.env.example
+    volumes: [./python-worker:/app, ./laravel-app/storage/app/snapshots:/snapshots]
+    depends_on: [pgsql, redis]
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, count: 1, capabilities: [gpu]}]
+volumes:
+  pgdata:
